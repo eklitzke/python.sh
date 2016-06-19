@@ -6,8 +6,9 @@ LD_LIBRARY_PATH=$HOME/local/lib
 
 # this is a 64-bit system
 declare -i wordsize=8
+declare -r ZERO=int:0
 
-s=$(cat<<EOF
+script=$(cat<<EOF
 def add(*args):
     return sum(int(arg) for arg in args)
 EOF
@@ -17,17 +18,6 @@ cat<<EOF >python.c
 #include <assert.h>
 
 #include <Python.h>
-
-// Marshal the input words. This will return a Python tuple object containing
-// all of the strings passed in.
-PyObject *MarshalParams(const char **words, size_t count) {
-  PyObject *list = PyTuple_New(count);
-  for (size_t i = 0; i < count; i++) {
-    PyObject *s = PyString_FromString(words[i]);
-    PyTuple_SET_ITEM(list, (Py_ssize_t)i, s);
-  }
-  return list;
-}
 
 // XXX: leaks references
 PyObject *CreateFunction(const char *funcname, const char *code) {
@@ -71,11 +61,25 @@ dlopen $sofile
 # initialize the python interpreter
 dlcall Py_Initialize
 
-# marshal the params
-dlcall -n pytuple -r pointer MarshalParams $buffer long:$numwords
+dlcall -n pytuple -r pointer PyTuple_New long:$numwords
+
+i=0
+for word in "${words[@]}"; do
+    dlcall -n s -r pointer PyString_FromString $word
+    if [ $s = $NULL ]; then
+        echo "failed to PyString_FromString"
+        exit 1
+    fi
+    dlcall -n r -r int PyTuple_SetItem $pytuple long:$i $s
+    if [ $r != $ZERO ]; then
+        echo "failed to PyTuple_SetItem"
+        exit 1
+    fi
+    i=$((i + 1))
+done
 
 # create a python function object for "add"
-dlcall -n pyfunc -r pointer CreateFunction string:add string:"$s"
+dlcall -n pyfunc -r pointer CreateFunction string:add string:"$script"
 
 # call the function
 dlcall -n out -r pointer PyObject_CallObject $pyfunc $pytuple
