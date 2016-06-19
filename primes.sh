@@ -35,6 +35,7 @@ def is_probable_prime(n, k = 7):
 EOF
 )
 
+# initialize the python interpreter
 init_python
 
 # create $pymodule
@@ -43,6 +44,7 @@ load_module "$code"
 # create $pyfunc
 get_function is_probable_prime
 
+# call the rabin-miller primality test for integers 2 -> 100
 for x in {2..100}; do
     printf "prime? %d -> %s\n" $x $(call_func $x)
 done
