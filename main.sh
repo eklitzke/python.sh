@@ -9,7 +9,38 @@ declare -i wordsize=8
 declare -i PY_FILE_INPUT=257
 declare -r ZERO=int:0
 
-script=$(cat<<EOF
+function ensure_not_null {
+    if [ "$1" = $NULL ]; then
+        echo "null result"
+        exit 1
+    fi
+}
+
+declare -i is_inited=0
+
+# lazily initialize the interpreter
+function init_python {
+    if [ $is_inited -eq 0 ]; then
+        # initialize the python interpreter
+        dlopen libpython2.7.so
+        dlcall Py_Initialize
+        is_inited=1
+    fi
+}
+
+function load_script {
+    init_python
+
+    # compile the script to a code object
+    dlcall -n pycompiled -r pointer Py_CompileString string:"$1" "" $PY_FILE_INPUT
+    ensure_not_null $pycompiled
+
+    # compile the code object to a module
+    dlcall -n pymodule -r pointer PyImport_ExecCodeModule string:"sh.py" $pycompiled
+    ensure_not_null $pymodule
+}
+
+load_script "$(cat<<EOF
 import random
 import sys
 
@@ -39,32 +70,7 @@ def is_probable_prime(n, k = 7):
                return False  # composite if we reached end of this loop
       return True  # probably prime if reached end of outer loop
 EOF
-)
-
-function ensure_not_null {
-    if [ "$1" = $NULL ]; then
-        echo "null result"
-        exit 1
-    fi
-}
-
-# allocate space for our packed words
-dlcall -n buffer -r pointer malloc $((numwords * wordsize))
-pack $buffer words
-
-# load the code
-dlopen libpython2.7.so
-
-# initialize the python interpreter
-dlcall Py_Initialize
-
-# compile the script to a code object
-dlcall -n pycompiled -r pointer Py_CompileString string:"$script" "" $PY_FILE_INPUT
-ensure_not_null $pycompiled
-
-# compile the code object to a module
-dlcall -n pymodule -r pointer PyImport_ExecCodeModule string:is_probable_prime $pycompiled
-ensure_not_null $pymodule
+)"
 
 # get the is_probable_prime function from the module
 dlcall -n millerrabin -r pointer PyObject_GetAttrString $pymodule string:is_probable_prime
@@ -89,7 +95,7 @@ for x in {2..100}; do
 
     # unmarshal the return value
     dlcall -n res -r long PyInt_AsLong $out
-    printf "is_probable_prime: $x -> %d\n" $(echo $res | egrep -o '[0-9]+')
+    printf "is_probable_prime: %d -> %d\n" $x $(echo $res | egrep -o '[0-9]+')
 
     # don't leak memory
     dlcall Py_DecRef $out
