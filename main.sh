@@ -8,6 +8,7 @@ LD_LIBRARY_PATH=$HOME/local/lib
 declare -i wordsize=8
 declare -i PY_FILE_INPUT=257
 declare -r ZERO=int:0
+declare funcname="string:add"
 
 script=$(cat<<EOF
 def add(*args):
@@ -52,17 +53,21 @@ for word in "${words[@]}"; do
     i=$((i + 1))
 done
 
+# compile the script to a code object
 dlcall -n pycompiled -r pointer Py_CompileString string:"$script" "" $PY_FILE_INPUT
 ensure_not_null $pycompiled
 
-dlcall -n pymodule -r pointer PyImport_ExecCodeModule string:add $pycompiled
+# compile the code object to a module
+dlcall -n pymodule -r pointer PyImport_ExecCodeModule $funcname $pycompiled
 ensure_not_null $module
 
-dlcall -n pyfunc -r pointer PyObject_GetAttrString $pymodule string:add
+# get the function from the module
+dlcall -n pyfunc -r pointer PyObject_GetAttrString $pymodule $funcname
 ensure_not_null $pyfunc
 
 # call the function
 dlcall -n out -r pointer PyObject_CallObject $pyfunc $pytuple
+ensure_not_null $out
 
 # unmarshal the return value
 dlcall -n res -r long PyInt_AsLong $out
