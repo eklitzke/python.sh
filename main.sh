@@ -103,6 +103,10 @@ ensure_not_null $out
 dlcall -n res -r long PyInt_AsLong $out
 printf "add: return value is %d\n" $(echo $res | egrep -o '[0-9]+')
 
+# don't leak memory
+dlcall Py_DecRef $out
+dlcall Py_DecRef $pytuple
+
 # get the is_probable_prime function from the module
 dlcall -n millerrabin -r pointer PyObject_GetAttrString $pymodule string:is_probable_prime
 ensure_not_null $millerrabin
@@ -127,4 +131,8 @@ for x in {2..100}; do
     # unmarshal the return value
     dlcall -n res -r long PyInt_AsLong $out
     printf "is_probable_prime: $x -> %d\n" $(echo $res | egrep -o '[0-9]+')
+
+    # don't leak memory
+    dlcall Py_DecRef $out
+    dlcall Py_DecRef $pytuple
 done
