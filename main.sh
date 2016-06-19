@@ -28,19 +28,33 @@ function init_python {
     fi
 }
 
-function load_script {
-    init_python
+function load_module {
+    if [ $# -ne 1 ]; then
+        echo "usage: load_module <script>"
+        exit 1
+    fi
 
     # compile the script to a code object
     dlcall -n pycompiled -r pointer Py_CompileString string:"$1" "" $PY_FILE_INPUT
     ensure_not_null $pycompiled
 
     # compile the code object to a module
-    dlcall -n pymodule -r pointer PyImport_ExecCodeModule string:"sh.py" $pycompiled
+    dlcall -n pymodule -r pointer PyImport_ExecCodeModule string:"magic" $pycompiled
     ensure_not_null $pymodule
 }
 
-load_script "$(cat<<EOF
+function get_attribute {
+    if [ $# -ne 1 ]; then
+        echo "usage: get_attribute <attribute_name>"
+        exit 1
+    fi
+
+    # get the function from the module
+    dlcall -n pyfunc -r pointer PyObject_GetAttrString $pymodule string:"$1"
+    ensure_not_null $pyfunc
+}
+
+code=$(cat<<EOF
 import random
 import sys
 
@@ -70,11 +84,11 @@ def is_probable_prime(n, k = 7):
                return False  # composite if we reached end of this loop
       return True  # probably prime if reached end of outer loop
 EOF
-)"
+)
 
-# get the is_probable_prime function from the module
-dlcall -n millerrabin -r pointer PyObject_GetAttrString $pymodule string:is_probable_prime
-ensure_not_null $millerrabin
+init_python
+load_module "$code"
+get_attribute is_probable_prime
 
 for x in {2..100}; do
     dlcall -n pytuple -r pointer PyTuple_New long:1
@@ -84,13 +98,13 @@ for x in {2..100}; do
     ensure_not_null $num
 
     dlcall -n r -r int PyTuple_SetItem $pytuple long:0 $num
-    if [ $r != $ZERO ]; then
+    if [ "$r" != $ZERO ]; then
         echo "failed to PyTuple_SetItem"
         exit 1
     fi
 
     # call the add function
-    dlcall -n out -r pointer PyObject_CallObject $millerrabin $pytuple
+    dlcall -n out -r pointer PyObject_CallObject $pyfunc $pytuple
     ensure_not_null $out
 
     # unmarshal the return value
