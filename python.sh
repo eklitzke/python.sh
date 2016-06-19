@@ -43,13 +43,43 @@ function load_module {
     ensure_not_null $pymodule
 }
 
-function get_attribute {
+function get_function {
     if [ $# -ne 1 ]; then
-        echo "usage: get_attribute <attribute_name>"
+        echo "usage: get_function <attribute_name>"
         exit 1
     fi
 
     # get the function from the module
     dlcall -n pyfunc -r pointer PyObject_GetAttrString $pymodule string:"$1"
     ensure_not_null $pyfunc
+}
+
+function call_func {
+    dlcall -n pytuple -r pointer PyTuple_New long:"$#"
+    ensure_not_null $pytuple
+
+    local i=0
+    for arg in "$@"; do
+        dlcall -n s -r pointer PyString_FromString string:$arg
+        ensure_not_null $s
+
+        dlcall -n r -r int PyTuple_SetItem $pytuple long:$i $s
+        i=$((i + 1))
+    done
+
+    # call our function
+    dlcall -n out -r pointer PyObject_CallObject $pyfunc $pytuple
+    ensure_not_null $out
+
+    dlcall -n stringout -r pointer PyObject_Str $out
+    ensure_not_null $stringout
+
+    dlcall -n ret -r string PyString_AsString $stringout
+
+    # don't leak memory
+    dlcall Py_DecRef $out
+    dlcall Py_DecRef $pytuple
+    dlcall Py_DecRef $stringout
+
+    echo $ret | awk -F: '{print $2}'
 }

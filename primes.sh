@@ -9,6 +9,7 @@ import sys
 def is_probable_prime(n, k = 7):
    """use Rabin-Miller algorithm to return True (n is probably prime)
       or False (n is definitely composite)"""
+   n = int(n)
    if n < 6:  # assuming n >= 0 in all cases... shortcut small cases here
       return [False, False, True, True, False, True][n]
    elif n & 1 == 0:  # should be faster than n % 2
@@ -35,31 +36,13 @@ EOF
 )
 
 init_python
+
+# create $pymodule
 load_module "$code"
-get_attribute is_probable_prime
+
+# create $pyfunc
+get_function is_probable_prime
 
 for x in {2..100}; do
-    dlcall -n pytuple -r pointer PyTuple_New long:1
-    ensure_not_null $pytuple
-
-    dlcall -n num -r pointer PyInt_FromLong long:$x
-    ensure_not_null $num
-
-    dlcall -n r -r int PyTuple_SetItem $pytuple long:0 $num
-    if [ "$r" != $ZERO ]; then
-        echo "failed to PyTuple_SetItem"
-        exit 1
-    fi
-
-    # call the add function
-    dlcall -n out -r pointer PyObject_CallObject $pyfunc $pytuple
-    ensure_not_null $out
-
-    # unmarshal the return value
-    dlcall -n res -r long PyInt_AsLong $out
-    printf "is_probable_prime: %d -> %d\n" $x $(echo $res | egrep -o '[0-9]+')
-
-    # don't leak memory
-    dlcall Py_DecRef $out
-    dlcall Py_DecRef $pytuple
+    printf "prime? %d -> %s\n" $x $(call_func $x)
 done
