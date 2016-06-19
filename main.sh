@@ -8,14 +8,10 @@ LD_LIBRARY_PATH=$HOME/local/lib
 declare -i wordsize=8
 declare -i PY_FILE_INPUT=257
 declare -r ZERO=int:0
-declare funcname="string:add"
 
 script=$(cat<<EOF
 import random
 import sys
-
-def add(*args):
-    return sum(int(arg) for arg in args)
 
 def is_probable_prime(n, k = 7):
    """use Rabin-Miller algorithm to return True (n is probably prime)
@@ -52,12 +48,6 @@ function ensure_not_null {
     fi
 }
 
-trap "rm -f $sofile python.c" EXIT
-
-declare -a words
-words=(string:1 string:2 string:3)
-numwords=${#words[@]}
-
 # allocate space for our packed words
 dlcall -n buffer -r pointer malloc $((numwords * wordsize))
 pack $buffer words
@@ -68,44 +58,13 @@ dlopen libpython2.7.so
 # initialize the python interpreter
 dlcall Py_Initialize
 
-dlcall -n pytuple -r pointer PyTuple_New long:$numwords
-ensure_not_null $pytuple
-
-i=0
-for word in "${words[@]}"; do
-    dlcall -n s -r pointer PyString_FromString $word
-    ensure_not_null $s
-    dlcall -n r -r int PyTuple_SetItem $pytuple long:$i $s
-    if [ $r != $ZERO ]; then
-        echo "failed to PyTuple_SetItem"
-        exit 1
-    fi
-    i=$((i + 1))
-done
-
 # compile the script to a code object
 dlcall -n pycompiled -r pointer Py_CompileString string:"$script" "" $PY_FILE_INPUT
 ensure_not_null $pycompiled
 
 # compile the code object to a module
-dlcall -n pymodule -r pointer PyImport_ExecCodeModule $funcname $pycompiled
-ensure_not_null $module
-
-# get the add function from the module
-dlcall -n addfunc -r pointer PyObject_GetAttrString $pymodule $funcname
-ensure_not_null $addfunc
-
-# call the add function
-dlcall -n out -r pointer PyObject_CallObject $addfunc $pytuple
-ensure_not_null $out
-
-# unmarshal the return value
-dlcall -n res -r long PyInt_AsLong $out
-printf "add: return value is %d\n" $(echo $res | egrep -o '[0-9]+')
-
-# don't leak memory
-dlcall Py_DecRef $out
-dlcall Py_DecRef $pytuple
+dlcall -n pymodule -r pointer PyImport_ExecCodeModule string:is_probable_prime $pycompiled
+ensure_not_null $pymodule
 
 # get the is_probable_prime function from the module
 dlcall -n millerrabin -r pointer PyObject_GetAttrString $pymodule string:is_probable_prime
