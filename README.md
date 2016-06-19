@@ -13,5 +13,5 @@ return values are also treated as strings. This means that in your Python
 methods you will have to cast from a string type if you expect arguments of
 another type (say, integers).
 
-An example program is listed in `primes.py`, which implements the Rabin-Miller
+An example program is listed in `primes.sh`, which implements the Rabin-Miller
 primality test in Python and exposes it to Bash.
